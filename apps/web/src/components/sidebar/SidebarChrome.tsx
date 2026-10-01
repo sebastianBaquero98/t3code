@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
+import { ArrowLeftIcon, ChartNoAxesColumnIcon, KanbanIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
@@ -155,6 +155,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     closeMobileSidebar();
     void navigate({ to: "/settings" });
   }, [closeMobileSidebar, navigate]);
+  const handleBoardClick = useCallback(() => {
+    closeMobileSidebar();
+    void navigate({ to: "/board" });
+  }, [closeMobileSidebar, navigate]);
 
   const handleUsageClick = useCallback(() => {
     if (isMobile) {
@@ -179,6 +183,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
         </SidebarMenuItem>
       ) : (
         <>
+          <SidebarUtilityItem icon={<KanbanIcon />} label="Board" onClick={handleBoardClick} />
           <SidebarUtilityItem
             icon={<SettingsIcon />}
             label="Settings"

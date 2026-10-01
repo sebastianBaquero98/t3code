@@ -17,6 +17,7 @@ import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import { loadLinearBoard } from "./linear/LinearBoard.ts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
 import { subscribeCodexAuthCallback } from "./provider/CodexAuthCallback.ts";
 import {
@@ -85,7 +86,12 @@ import {
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
-import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
+import {
+  HttpClient,
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerRespondable,
+} from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
@@ -665,6 +671,7 @@ const makeWsRpcLayer = (
       const sourceControlRepositories =
         yield* SourceControlRepositoryService.SourceControlRepositoryService;
       const pullRequests = yield* PullRequestService.PullRequestService;
+      const httpClient = yield* HttpClient.HttpClient;
       const withPullRequestViewer = pullRequests.withRoutingCredential;
       const pullRequestSync = yield* PullRequestSyncReactor.PullRequestSyncReactor;
       const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
@@ -3022,6 +3029,17 @@ const makeWsRpcLayer = (
                   ),
             ),
             { "rpc.aggregate": "cloud" },
+          ),
+        [WS_METHODS.linearBoard]: () =>
+          observeRpcEffect(
+            WS_METHODS.linearBoard,
+            DateTime.now.pipe(
+              Effect.flatMap((now) =>
+                loadLinearBoard(process.env.LINEAR_API_KEY, now, DateTime.zoneMakeLocal()),
+              ),
+              Effect.provideService(HttpClient.HttpClient, httpClient),
+            ),
+            { "rpc.aggregate": "linear" },
           ),
         [WS_METHODS.pullRequestsList]: (input) =>
           observeRpcEffect(WS_METHODS.pullRequestsList, pullRequests.list(input), {
