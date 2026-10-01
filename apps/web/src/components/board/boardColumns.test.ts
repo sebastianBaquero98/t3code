@@ -1,7 +1,15 @@
 import type { LinearIssue } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { boardColumnKeyForIssue, groupIssuesByColumn, threadForIssue } from "./boardColumns";
+import {
+  applyPendingMoves,
+  BOARD_COLUMNS,
+  boardColumnKeyForIssue,
+  groupIssuesByColumn,
+  reconcilePendingMoves,
+  targetStateName,
+  threadForIssue,
+} from "./boardColumns";
 
 const issue = (overrides: Partial<LinearIssue>): LinearIssue => ({
   id: "id",
@@ -99,5 +107,34 @@ describe("threadForIssue", () => {
     ];
     expect(threadForIssue(issue({}), threads)?.id).toBe("newer");
     expect(threadForIssue(issue({ branchName: "nobody/bra-9" }), threads)).toBeNull();
+  });
+});
+
+describe("pending moves", () => {
+  const dragged = issue({ id: "a", stateName: "To do", updatedAt: "2026-09-30T10:00:00.000Z" });
+  const moves = new Map([["a", { stateName: "In Progress", fromUpdatedAt: dragged.updatedAt }]]);
+
+  it("shows the dragged card in its target column until Linear answers", () => {
+    const shown = applyPendingMoves([dragged, issue({ id: "b" })], moves);
+    expect(shown.map((entry) => boardColumnKeyForIssue(entry))).toEqual(["in-progress", "todo"]);
+    expect(reconcilePendingMoves([dragged], moves)).toBe(moves);
+  });
+
+  it("drops the move once Linear reports any newer write, or the issue leaves the board", () => {
+    const written = { ...dragged, stateName: "Blocked", updatedAt: "2026-09-30T10:00:05.000Z" };
+    expect(reconcilePendingMoves([written], moves).size).toBe(0);
+    expect(reconcilePendingMoves([], moves).size).toBe(0);
+  });
+
+  it("targets each column's first named state", () => {
+    expect(BOARD_COLUMNS.map(targetStateName)).toEqual([
+      "To do",
+      "In Progress",
+      "Blocked",
+      "In Review",
+      "Ready to test by Product",
+      "Testing",
+      "Done",
+    ]);
   });
 });

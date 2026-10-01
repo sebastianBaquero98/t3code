@@ -37,7 +37,18 @@ export const LinearBoardResult = Schema.Struct({
 });
 export type LinearBoardResult = typeof LinearBoardResult.Type;
 
-export const LinearUnavailableReason = Schema.Literals(["missing_api_key", "request_failed"]);
+export const LinearSetIssueStateInput = Schema.Struct({
+  issueId: Schema.String,
+  /** A state name in the issue's own team workflow, e.g. "In Review". */
+  stateName: Schema.String,
+});
+export type LinearSetIssueStateInput = typeof LinearSetIssueStateInput.Type;
+
+export const LinearUnavailableReason = Schema.Literals([
+  "missing_api_key",
+  "request_failed",
+  "unknown_state",
+]);
 export type LinearUnavailableReason = typeof LinearUnavailableReason.Type;
 
 export class LinearUnavailableError extends Schema.TaggedError<LinearUnavailableError>()(
@@ -48,8 +59,13 @@ export class LinearUnavailableError extends Schema.TaggedError<LinearUnavailable
   },
 ) {
   override get message(): string {
-    return this.reason === "missing_api_key"
-      ? "Set LINEAR_API_KEY on the T3 Code server to load the board."
-      : `Linear request failed: ${this.detail}`;
+    switch (this.reason) {
+      case "missing_api_key":
+        return "Set LINEAR_API_KEY on the T3 Code server to load the board.";
+      case "unknown_state":
+        return this.detail;
+      case "request_failed":
+        return `Linear request failed: ${this.detail}`;
+    }
   }
 }

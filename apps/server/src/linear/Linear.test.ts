@@ -4,7 +4,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
-import { loadLinearBoard, startOfWeek } from "./LinearBoard.ts";
+import { loadLinearBoard, setLinearIssueState, startOfWeek } from "./Linear.ts";
 
 const respondWith = (body: unknown, seen: Array<Record<string, unknown>> = []) =>
   HttpClient.make((request) =>
@@ -108,6 +108,78 @@ describe("loadLinearBoard", () => {
       );
       assert.strictEqual(error.reason, "request_failed");
       assert.strictEqual(error.detail, "Authentication required");
+    }),
+  );
+});
+
+describe("setLinearIssueState", () => {
+  const teamStates = {
+    data: {
+      issue: {
+        team: {
+          states: {
+            nodes: [
+              { id: "state-progress", name: "In Progress" },
+              { id: "state-review", name: "In Review" },
+            ],
+          },
+        },
+      },
+    },
+  };
+
+  /** Answers the team-states query, then records the mutation's variables. */
+  const linear = (mutations: Array<unknown>, success = true) =>
+    HttpClient.make((request) =>
+      Effect.sync(() => {
+        const body = JSON.parse(
+          new TextDecoder().decode((request.body as { body: Uint8Array }).body),
+        );
+        if (String(body.query).includes("mutation")) mutations.push(body.variables);
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(
+            JSON.stringify(
+              String(body.query).includes("mutation")
+                ? { data: { issueUpdate: { success } } }
+                : teamStates,
+            ),
+          ),
+        );
+      }),
+    );
+
+  it.effect("updates the issue to the id its team gives that state name", () =>
+    Effect.gen(function* () {
+      const mutations: Array<unknown> = [];
+      yield* setLinearIssueState("key", { issueId: "issue-1", stateName: "In Review" }).pipe(
+        Effect.provideService(HttpClient.HttpClient, linear(mutations)),
+      );
+      assert.deepEqual(mutations, [{ id: "issue-1", stateId: "state-review" }]);
+    }),
+  );
+
+  it.effect("fails as unknown_state without mutating when the team lacks the state", () =>
+    Effect.gen(function* () {
+      const mutations: Array<unknown> = [];
+      const error = yield* Effect.flip(
+        setLinearIssueState("key", { issueId: "issue-1", stateName: "Testing" }).pipe(
+          Effect.provideService(HttpClient.HttpClient, linear(mutations)),
+        ),
+      );
+      assert.strictEqual(error.reason, "unknown_state");
+      assert.deepEqual(mutations, []);
+    }),
+  );
+
+  it.effect("fails when Linear answers success: false", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        setLinearIssueState("key", { issueId: "issue-1", stateName: "In Progress" }).pipe(
+          Effect.provideService(HttpClient.HttpClient, linear([], false)),
+        ),
+      );
+      assert.strictEqual(error.reason, "request_failed");
     }),
   );
 });

@@ -24,7 +24,12 @@ import {
 } from "./providerSetup.ts";
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
-import { LinearBoardInput, LinearBoardResult, LinearUnavailableError } from "./linear.ts";
+import {
+  LinearBoardInput,
+  LinearBoardResult,
+  LinearSetIssueStateInput,
+  LinearUnavailableError,
+} from "./linear.ts";
 import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
@@ -411,6 +416,7 @@ export const WS_METHODS = {
 
   // Linear board methods
   linearBoard: "linear.board",
+  linearSetIssueState: "linear.setIssueState",
 
   // Pull request methods
   pullRequestsList: "pullRequests.list",
@@ -747,6 +753,11 @@ const PullRequestRpcError = Schema.Union([
 const WsLinearBoardRpc = Rpc.make(WS_METHODS.linearBoard, {
   payload: LinearBoardInput,
   success: LinearBoardResult,
+  error: Schema.Union([LinearUnavailableError, EnvironmentAuthorizationError]),
+});
+
+const WsLinearSetIssueStateRpc = Rpc.make(WS_METHODS.linearSetIssueState, {
+  payload: LinearSetIssueStateInput,
   error: Schema.Union([LinearUnavailableError, EnvironmentAuthorizationError]),
 });
 
@@ -1502,6 +1513,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,
   WsLinearBoardRpc,
+  WsLinearSetIssueStateRpc,
   WsPullRequestsListRpc,
   WsPullRequestsListStatsRpc,
   WsPullRequestsSummaryRpc,

@@ -1,5 +1,9 @@
-import { createEnvironmentRpcQueryAtomFamily } from "@t3tools/client-runtime/state/runtime";
+import {
+  createEnvironmentRpcCommand,
+  createEnvironmentRpcQueryAtomFamily,
+} from "@t3tools/client-runtime/state/runtime";
 import { WS_METHODS } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 
@@ -9,4 +13,12 @@ export const linearBoard = createEnvironmentRpcQueryAtomFamily(connectionAtomRun
   tag: WS_METHODS.linearBoard,
   staleTimeMs: 30_000,
   refreshIntervalMs: 60_000,
+});
+
+/** Moves an issue in Linear, then re-reads the board so the card settles on Linear's answer. */
+export const setLinearIssueState = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:linear:set-issue-state",
+  tag: WS_METHODS.linearSetIssueState,
+  onSettled: ({ environmentId }, registry) =>
+    Effect.sync(() => registry.refresh(linearBoard({ environmentId, input: {} }))),
 });

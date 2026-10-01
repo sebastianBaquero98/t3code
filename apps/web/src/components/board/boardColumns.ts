@@ -64,3 +64,44 @@ export function threadForIssue<
   }
   return newest;
 }
+
+/** A drag the board shows before Linear confirms it. */
+export interface PendingMove {
+  readonly stateName: string;
+  /** The issue's `updatedAt` when it was dragged; any newer Linear write supersedes the move. */
+  readonly fromUpdatedAt: string;
+}
+
+/** The state a card dropped on `column` is moved to: the column's first named state. */
+export function targetStateName(column: BoardColumn): string {
+  return column.states[0]!;
+}
+
+export function applyPendingMoves(
+  issues: ReadonlyArray<LinearIssue>,
+  moves: ReadonlyMap<string, PendingMove>,
+): ReadonlyArray<LinearIssue> {
+  if (moves.size === 0) return issues;
+  return issues.map((issue) => {
+    const move = moves.get(issue.id);
+    return move === undefined ? issue : { ...issue, stateName: move.stateName };
+  });
+}
+
+/**
+ * The moves still worth showing. Linear stays the source of truth: once the issue changes there
+ * (our own write landing, or anyone else's), the fetched state replaces the optimistic one.
+ */
+export function reconcilePendingMoves(
+  issues: ReadonlyArray<LinearIssue>,
+  moves: ReadonlyMap<string, PendingMove>,
+): ReadonlyMap<string, PendingMove> {
+  let next: Map<string, PendingMove> | null = null;
+  for (const [issueId, move] of moves) {
+    const issue = issues.find((candidate) => candidate.id === issueId);
+    if (issue !== undefined && issue.updatedAt === move.fromUpdatedAt) continue;
+    next ??= new Map(moves);
+    next.delete(issueId);
+  }
+  return next ?? moves;
+}
