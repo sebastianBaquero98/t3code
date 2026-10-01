@@ -4,7 +4,8 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
-const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
+// Overridable so the board can run against a local stand-in during development.
+const LINEAR_GRAPHQL_URL = process.env.LINEAR_GRAPHQL_URL ?? "https://api.linear.app/graphql";
 
 /**
  * The viewer's open work (To do and every started state, Blocked included) whatever its age,
