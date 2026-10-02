@@ -1,4 +1,7 @@
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
+import type {
+  EnvironmentProject,
+  EnvironmentThreadShell,
+} from "@t3tools/client-runtime/state/models";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { DEFAULT_SERVER_SETTINGS, type LinearIssue } from "@t3tools/contracts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
@@ -9,6 +12,7 @@ import { useServerConfigs } from "../../state/entities";
 import { listBoardProjectRefs, loadLinearIssueDetail } from "../../state/linear";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { buildHardReviewPrompt } from "./boardActions";
 import { buildStartPrompt, defaultBranchName } from "./startIssueWork";
 
 const failureText = (result: {
@@ -95,5 +99,71 @@ export function useStartIssueWork() {
       return result._tag === "Failure" ? failureText(result) : null;
     },
     [listRefs, loadDetail, serverConfigs, startTurn],
+  );
+}
+
+/** Sends a follow-up turn to an existing thread, keeping its model and modes. */
+export function useSendToThread() {
+  const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  return useCallback(
+    async (thread: EnvironmentThreadShell, text: string): Promise<string | null> => {
+      const result = await startTurn({
+        environmentId: thread.environmentId,
+        input: {
+          threadId: thread.id,
+          message: { messageId: newMessageId(), role: "user", text, attachments: [] },
+          runtimeMode: thread.runtimeMode,
+          interactionMode: thread.interactionMode,
+          createdAt: new Date().toISOString(),
+        },
+      });
+      return result._tag === "Failure" ? failureText(result) : null;
+    },
+    [startTurn],
+  );
+}
+
+/**
+ * Opens a review thread in the issue's worktree. Sharing the branch is what makes the board list
+ * it under the issue's card.
+ */
+export function useStartHardReview() {
+  const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  return useCallback(
+    async (issue: LinearIssue, thread: EnvironmentThreadShell): Promise<string | null> => {
+      const createdAt = new Date().toISOString();
+      const title = `Hard review · ${issue.identifier}`;
+      const result = await startTurn({
+        environmentId: thread.environmentId,
+        input: {
+          threadId: newThreadId(),
+          message: {
+            messageId: newMessageId(),
+            role: "user",
+            text: buildHardReviewPrompt(issue),
+            attachments: [],
+          },
+          modelSelection: thread.modelSelection,
+          titleSeed: title,
+          runtimeMode: thread.runtimeMode,
+          interactionMode: "default",
+          bootstrap: {
+            createThread: {
+              projectId: thread.projectId,
+              title,
+              modelSelection: thread.modelSelection,
+              runtimeMode: thread.runtimeMode,
+              interactionMode: "default",
+              branch: thread.branch,
+              worktreePath: thread.worktreePath,
+              createdAt,
+            },
+          },
+          createdAt,
+        },
+      });
+      return result._tag === "Failure" ? failureText(result) : null;
+    },
+    [startTurn],
   );
 }

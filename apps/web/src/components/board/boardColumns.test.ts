@@ -8,7 +8,6 @@ import {
   groupIssuesByColumn,
   reconcilePendingMoves,
   targetStateName,
-  threadForIssue,
 } from "./boardColumns";
 
 const issue = (overrides: Partial<LinearIssue>): LinearIssue => ({
@@ -84,29 +83,6 @@ describe("groupIssuesByColumn", () => {
       "low",
       "none",
     ]);
-  });
-});
-
-describe("threadForIssue", () => {
-  const thread = (id: string, branch: string | null, updatedAt: string) => ({
-    id,
-    branch,
-    updatedAt,
-    archivedAt: null as string | null,
-  });
-
-  it("picks the newest live thread on the issue's branch", () => {
-    const threads = [
-      thread("other-branch", "main", "2026-09-30T00:00:00.000Z"),
-      thread("older", "sebastian/bra-1-issue", "2026-09-28T00:00:00.000Z"),
-      thread("newer", "sebastian/bra-1-issue", "2026-09-29T00:00:00.000Z"),
-      {
-        ...thread("archived", "sebastian/bra-1-issue", "2026-09-30T00:00:00.000Z"),
-        archivedAt: "x",
-      },
-    ];
-    expect(threadForIssue(issue({}), threads)?.id).toBe("newer");
-    expect(threadForIssue(issue({ branchName: "nobody/bra-9" }), threads)).toBeNull();
   });
 });
 

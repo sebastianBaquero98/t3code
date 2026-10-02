@@ -49,22 +49,6 @@ export function groupIssuesByColumn(
   }));
 }
 
-/** The issue's working thread: the newest unarchived thread on the branch Linear named for it. */
-export function threadForIssue<
-  T extends {
-    readonly branch: string | null;
-    readonly archivedAt: string | null;
-    readonly updatedAt: string;
-  },
->(issue: Pick<LinearIssue, "branchName">, threads: ReadonlyArray<T>): T | null {
-  let newest: T | null = null;
-  for (const thread of threads) {
-    if (thread.archivedAt !== null || thread.branch !== issue.branchName) continue;
-    if (newest === null || thread.updatedAt > newest.updatedAt) newest = thread;
-  }
-  return newest;
-}
-
 /** A drag the board shows before Linear confirms it. */
 export interface PendingMove {
   readonly stateName: string;

@@ -1,10 +1,10 @@
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { LinearIssue } from "@t3tools/contracts";
+import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
 import {
   DndContext,
   DragOverlay,
@@ -16,9 +16,8 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Link } from "@tanstack/react-router";
-import { ArrowUpRightIcon, GitBranchIcon, KanbanIcon, PlayIcon } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { KanbanIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
@@ -27,22 +26,19 @@ import { useProjects, useThreadShells } from "../../state/entities";
 import { linearBoard, setLinearIssueState } from "../../state/linear";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { buildThreadRouteParams } from "../../threadRoutes";
-import { resolveThreadStatusPill } from "../Sidebar.logic";
-import { ThreadStatusLabel } from "../ThreadStatusIndicators";
+import { resolveSidebarThreadStatus } from "../Sidebar.logic";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { RefreshIcon } from "../ui/refresh-icon";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SidebarInset } from "../ui/sidebar";
 import { Skeleton } from "../ui/skeleton";
-import { Spinner } from "../ui/spinner";
 import { toastManager } from "../ui/toast";
 import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "../WorkspaceBreadcrumb";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { BoardPriorityIcon, BoardStateIcon } from "./BoardGlyphs";
-import { pickBoardProject } from "./startIssueWork";
-import { useStartIssueWork } from "./useStartIssueWork";
+import { BoardCard, type BoardCardActions } from "./BoardCard";
+import { BoardStateIcon } from "./BoardGlyphs";
+import { buildShipPrompt, issueThreads, shouldMarkReadyToTest } from "./boardActions";
 import {
   applyPendingMoves,
   BOARD_COLUMNS,
@@ -50,11 +46,13 @@ import {
   groupIssuesByColumn,
   reconcilePendingMoves,
   targetStateName,
-  threadForIssue,
   type PendingMove,
 } from "./boardColumns";
+import { pickBoardProject } from "./startIssueWork";
+import { useSendToThread, useStartHardReview, useStartIssueWork } from "./useBoardActions";
 
 const BOARD_PROJECT_STORAGE_KEY = "t3code:board-project-id";
+const READY_TO_TEST_STATE = "Ready to test by Product";
 
 const weekRangeFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
@@ -65,56 +63,31 @@ function formatWeekRange(weekStartIso: string): string {
   return `${weekRangeFormat.format(start)} – ${weekRangeFormat.format(end)}`;
 }
 
+const failureMessage = (result: Parameters<typeof squashAtomCommandFailure>[0]) => {
+  const failure = squashAtomCommandFailure(result);
+  return failure instanceof Error ? failure.message : "Linear rejected the change.";
+};
+
 export function BoardPage() {
   const environmentId = usePrimaryEnvironmentId();
   const board = useEnvironmentQuery(
     environmentId === null ? null : linearBoard({ environmentId, input: {} }),
   );
   const threads = useThreadShells();
-  const moveIssue = useAtomCommand(setLinearIssueState, { reportFailure: false });
-  const [pendingMoves, setPendingMoves] = useState<ReadonlyMap<string, PendingMove>>(new Map());
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const projects = useProjects();
+  const moveIssue = useAtomCommand(setLinearIssueState, { reportFailure: false });
+  const startIssueWork = useStartIssueWork();
+  const sendToThread = useSendToThread();
+  const startHardReview = useStartHardReview();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  const [pendingMoves, setPendingMoves] = useState<ReadonlyMap<string, PendingMove>>(new Map());
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [preferredProjectId, setPreferredProjectId] = useState(() =>
     localStorage.getItem(BOARD_PROJECT_STORAGE_KEY),
   );
   const project = pickBoardProject(projects, preferredProjectId);
-  const startIssueWork = useStartIssueWork();
-  const [startingIds, setStartingIds] = useState<ReadonlySet<string>>(new Set());
-
-  const selectProject = (projectId: string) => {
-    localStorage.setItem(BOARD_PROJECT_STORAGE_KEY, projectId);
-    setPreferredProjectId(projectId);
-  };
-
-  const startWork = useCallback(
-    async (issue: LinearIssue) => {
-      if (project === null) {
-        toastManager.add({
-          type: "error",
-          title: `Couldn't start ${issue.identifier}`,
-          description: "Pick the project issue worktrees start in, at the top of the board.",
-        });
-        return;
-      }
-      setStartingIds((ids) => new Set(ids).add(issue.id));
-      const error = await startIssueWork(issue, project);
-      setStartingIds((ids) => {
-        const next = new Set(ids);
-        next.delete(issue.id);
-        return next;
-      });
-      if (error !== null) {
-        toastManager.add({
-          type: "error",
-          title: `Couldn't start ${issue.identifier}`,
-          description: error,
-        });
-      }
-    },
-    [project, startIssueWork],
-  );
 
   const fetchedIssues = board.data?.issues;
   // Superseded moves are ignored rather than deleted: a later drag of the same card replaces them.
@@ -127,43 +100,122 @@ export function BoardPage() {
     [fetchedIssues, liveMoves],
   );
   const columns = useMemo(() => groupIssuesByColumn(issues), [issues]);
+  const threadsByIssue = useMemo(
+    () => new Map(issues.map((issue) => [issue.id, issueThreads(issue, threads)])),
+    [issues, threads],
+  );
   const draggingIssue = issues.find((issue) => issue.id === draggingId) ?? null;
 
-  const handleDragStart = (event: DragStartEvent) => setDraggingId(String(event.active.id));
+  /** Runs one board action per card at a time, surfacing its failure as a toast. */
+  const runCardAction = useCallback(
+    async (issue: LinearIssue, title: string, action: () => Promise<string | null>) => {
+      setBusyIds((ids) => new Set(ids).add(issue.id));
+      const error = await action();
+      setBusyIds((ids) => {
+        const next = new Set(ids);
+        next.delete(issue.id);
+        return next;
+      });
+      if (error !== null) toastManager.add({ type: "error", title, description: error });
+    },
+    [],
+  );
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const moveToState = useCallback(
+    async (issue: LinearIssue, stateName: string, fromUpdatedAt: string) => {
+      if (environmentId === null) return;
+      setPendingMoves((moves) => new Map(moves).set(issue.id, { stateName, fromUpdatedAt }));
+      const result = await moveIssue({ environmentId, input: { issueId: issue.id, stateName } });
+      if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+      setPendingMoves((moves) => {
+        const next = new Map(moves);
+        next.delete(issue.id);
+        return next;
+      });
+      toastManager.add({
+        type: "error",
+        title: `Couldn't move ${issue.identifier} to ${stateName}`,
+        description: failureMessage(result),
+      });
+    },
+    [environmentId, moveIssue],
+  );
+
+  const startWork = useCallback(
+    (issue: LinearIssue) =>
+      runCardAction(issue, `Couldn't start ${issue.identifier}`, async () =>
+        project === null
+          ? "Pick the project issue worktrees start in, at the top of the board."
+          : startIssueWork(issue, project),
+      ),
+    [project, runCardAction, startIssueWork],
+  );
+
+  const shipIssue = useCallback(
+    (issue: LinearIssue, thread: EnvironmentThreadShell) =>
+      runCardAction(issue, `Couldn't ask for the ${issue.identifier} PR`, async () =>
+        resolveSidebarThreadStatus(thread) === "working"
+          ? "The agent is still working. Use Open PR on the card once it finishes."
+          : sendToThread(thread, buildShipPrompt(issue)),
+      ),
+    [runCardAction, sendToThread],
+  );
+
+  const reviewIssue = useCallback(
+    (issue: LinearIssue, thread: EnvironmentThreadShell) =>
+      runCardAction(issue, `Couldn't start a review of ${issue.identifier}`, () =>
+        startHardReview(issue, thread),
+      ),
+    [runCardAction, startHardReview],
+  );
+
+  // A merged PR moves its In Review card on, once per issue, unless Linear already did.
+  const markedReadyRef = useRef(new Set<string>());
+  useEffect(() => {
+    for (const issue of fetchedIssues ?? []) {
+      const thread = threadsByIssue.get(issue.id)?.primary ?? null;
+      const pullRequest =
+        thread === null ? null : resolveThreadCurrentPullRequestLink(thread.pullRequests);
+      const state = pullRequest?.snapshot?.state ?? null;
+      if (!shouldMarkReadyToTest(issue, state) || markedReadyRef.current.has(issue.id)) continue;
+      markedReadyRef.current.add(issue.id);
+      void moveToState(issue, READY_TO_TEST_STATE, issue.updatedAt);
+    }
+  }, [fetchedIssues, moveToState, threadsByIssue]);
+
+  const handleDragEnd = (event: DragEndEvent) => {
     setDraggingId(null);
     const issue = issues.find((candidate) => candidate.id === event.active.id);
     const column = BOARD_COLUMNS.find((candidate) => candidate.key === event.over?.id);
-    if (environmentId === null || issue === undefined || column === undefined) return;
+    if (issue === undefined || column === undefined) return;
     if (boardColumnKeyForIssue(issue) === column.key) return;
 
-    // Entering In Progress opens the issue's worktree thread, unless it already has one.
-    if (column.key === "in-progress" && threadForIssue(issue, threads) === null) {
-      void startWork(issue);
-    }
+    const thread = threadsByIssue.get(issue.id)?.primary ?? null;
+    if (column.key === "in-progress" && thread === null) void startWork(issue);
+    if (column.key === "in-review" && thread !== null) void shipIssue(issue, thread);
 
     const original = fetchedIssues?.find((candidate) => candidate.id === issue.id);
-    const stateName = targetStateName(column);
-    setPendingMoves((moves) =>
-      new Map(moves).set(issue.id, {
-        stateName,
-        fromUpdatedAt: original?.updatedAt ?? issue.updatedAt,
-      }),
-    );
-    const result = await moveIssue({ environmentId, input: { issueId: issue.id, stateName } });
-    if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-    setPendingMoves((moves) => {
-      const next = new Map(moves);
-      next.delete(issue.id);
-      return next;
-    });
-    const failure = squashAtomCommandFailure(result);
-    toastManager.add({
-      type: "error",
-      title: `Couldn't move ${issue.identifier} to ${column.title}`,
-      description: failure instanceof Error ? failure.message : "Linear rejected the change.",
-    });
+    void moveToState(issue, targetStateName(column), original?.updatedAt ?? issue.updatedAt);
+  };
+
+  const actionsFor = (issue: LinearIssue, columnKey: string): BoardCardActions => {
+    const thread = threadsByIssue.get(issue.id)?.primary ?? null;
+    if (busyIds.has(issue.id)) return { onStart: null, onShip: null, onReview: null };
+    return {
+      onStart: columnKey === "in-progress" && thread === null ? () => void startWork(issue) : null,
+      onShip:
+        columnKey === "in-review" &&
+        thread !== null &&
+        resolveSidebarThreadStatus(thread) !== "working"
+          ? () => void shipIssue(issue, thread)
+          : null,
+      onReview: thread !== null ? () => void reviewIssue(issue, thread) : null,
+    };
+  };
+
+  const selectProject = (projectId: string) => {
+    localStorage.setItem(BOARD_PROJECT_STORAGE_KEY, projectId);
+    setPreferredProjectId(projectId);
   };
 
   const missingKey = board.error?.includes("LINEAR_API_KEY") ?? false;
@@ -228,9 +280,9 @@ export function BoardPage() {
             ) : null}
             <DndContext
               sensors={sensors}
-              onDragStart={handleDragStart}
+              onDragStart={(event: DragStartEvent) => setDraggingId(String(event.active.id))}
               onDragCancel={() => setDraggingId(null)}
-              onDragEnd={(event) => void handleDragEnd(event)}
+              onDragEnd={handleDragEnd}
             >
               <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto px-3 pt-3 pb-3">
                 {columns.map(({ column, issues: columnIssues }) => (
@@ -241,19 +293,24 @@ export function BoardPage() {
                     count={columnIssues.length}
                     loading={board.data === null && board.isPending}
                   >
-                    {columnIssues.map((issue) => (
-                      <DraggableCard
-                        key={issue.id}
-                        issue={issue}
-                        thread={threadForIssue(issue, threads)}
-                        syncing={liveMoves.has(issue.id) || startingIds.has(issue.id)}
-                        onStart={
-                          column.key === "in-progress" && !startingIds.has(issue.id)
-                            ? () => void startWork(issue)
-                            : null
-                        }
-                      />
-                    ))}
+                    {columnIssues.map((issue) => {
+                      const { primary, reviews } = threadsByIssue.get(issue.id) ?? {
+                        primary: null,
+                        reviews: [],
+                      };
+                      return (
+                        <DraggableCard key={issue.id} id={issue.id}>
+                          <BoardCard
+                            issue={issue}
+                            columnKey={column.key}
+                            thread={primary}
+                            reviews={reviews}
+                            busy={liveMoves.has(issue.id) || busyIds.has(issue.id)}
+                            actions={actionsFor(issue, column.key)}
+                          />
+                        </DraggableCard>
+                      );
+                    })}
                   </BoardColumnView>
                 ))}
               </div>
@@ -261,9 +318,10 @@ export function BoardPage() {
                 {draggingIssue ? (
                   <BoardCard
                     issue={draggingIssue}
-                    thread={threadForIssue(draggingIssue, threads)}
-                    syncing={false}
-                    onStart={null}
+                    columnKey={boardColumnKeyForIssue(draggingIssue) ?? "todo"}
+                    thread={threadsByIssue.get(draggingIssue.id)?.primary ?? null}
+                    reviews={[]}
+                    busy={false}
                     lifted
                   />
                 ) : null}
@@ -318,13 +376,8 @@ function BoardColumnView({
   );
 }
 
-function DraggableCard(props: {
-  issue: LinearIssue;
-  thread: EnvironmentThreadShell | null;
-  syncing: boolean;
-  onStart: (() => void) | null;
-}) {
-  const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id: props.issue.id });
+function DraggableCard({ id, children }: { id: string; children: React.ReactNode }) {
+  const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id });
   return (
     <li
       ref={setNodeRef}
@@ -332,78 +385,8 @@ function DraggableCard(props: {
       {...listeners}
       className={cn("touch-none outline-none", isDragging && "opacity-40")}
     >
-      <BoardCard {...props} lifted={false} />
+      {children}
     </li>
-  );
-}
-
-function BoardCard({
-  issue,
-  thread,
-  syncing,
-  onStart,
-  lifted,
-}: {
-  issue: LinearIssue;
-  thread: EnvironmentThreadShell | null;
-  syncing: boolean;
-  /** Starts the issue's worktree thread; offered on In Progress cards that have none yet. */
-  onStart: (() => void) | null;
-  lifted: boolean;
-}) {
-  const status = thread === null ? null : resolveThreadStatusPill({ thread });
-  return (
-    <article
-      className={cn(
-        "group/card flex cursor-grab flex-col gap-1.5 rounded-md border border-border/70 bg-card px-3 py-2.5 text-sm shadow-xs transition-[border-color,box-shadow] hover:border-border",
-        lifted && "cursor-grabbing border-border shadow-lg",
-      )}
-    >
-      <div className="flex h-4 items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="tabular-nums">{issue.identifier}</span>
-        {syncing ? <Spinner size="sm" className="size-3" /> : null}
-        <div className="flex-1" />
-        <a
-          href={issue.url}
-          target="_blank"
-          rel="noreferrer"
-          aria-label={`Open ${issue.identifier} in Linear`}
-          onPointerDown={(event) => event.stopPropagation()}
-          className="opacity-0 transition-opacity group-hover/card:opacity-100 hover:text-foreground focus-visible:opacity-100"
-        >
-          <ArrowUpRightIcon className="size-3.5" />
-        </a>
-      </div>
-      <p className="line-clamp-2 leading-snug font-medium">{issue.title}</p>
-      <div className="mt-0.5 flex h-5 items-center gap-1.5">
-        <BoardPriorityIcon priority={issue.priority} />
-        {thread !== null ? (
-          <Link
-            to="/$environmentId/$threadId"
-            params={buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id))}
-            onPointerDown={(event) => event.stopPropagation()}
-            className="flex h-5 min-w-0 items-center gap-1 rounded border border-border/70 px-1.5 text-xs text-muted-foreground hover:border-border hover:text-foreground"
-          >
-            {status !== null ? (
-              <ThreadStatusLabel status={status} compact />
-            ) : (
-              <GitBranchIcon className="size-3" />
-            )}
-            <span className="truncate">{status?.label ?? "Thread"}</span>
-          </Link>
-        ) : onStart !== null && !syncing ? (
-          <button
-            type="button"
-            onClick={onStart}
-            onPointerDown={(event) => event.stopPropagation()}
-            className="flex h-5 items-center gap-1 rounded border border-dashed border-border px-1.5 text-xs text-muted-foreground hover:border-solid hover:text-foreground"
-          >
-            <PlayIcon className="size-3" />
-            Start work
-          </button>
-        ) : null}
-      </div>
-    </article>
   );
 }
 

@@ -34,3 +34,11 @@ export const listBoardProjectRefs = createEnvironmentRpcCommand(connectionAtomRu
   label: "environment-data:linear:list-project-refs",
   tag: WS_METHODS.vcsListRefs,
 });
+
+/** An issue worktree's `task.md`, read when its card's progress preview opens. */
+export const boardTaskFile = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+  label: "environment-data:linear:task-file",
+  tag: WS_METHODS.projectsReadFile,
+  staleTimeMs: 10_000,
+  idleTtlMs: 60_000,
+});
