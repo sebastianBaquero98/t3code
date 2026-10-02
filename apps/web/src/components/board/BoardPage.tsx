@@ -17,13 +17,13 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRightIcon, GitBranchIcon, KanbanIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ArrowUpRightIcon, GitBranchIcon, KanbanIcon, PlayIcon } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
 import { usePrimaryEnvironmentId } from "../../state/environments";
-import { useThreadShells } from "../../state/entities";
+import { useProjects, useThreadShells } from "../../state/entities";
 import { linearBoard, setLinearIssueState } from "../../state/linear";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -33,6 +33,7 @@ import { ThreadStatusLabel } from "../ThreadStatusIndicators";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { RefreshIcon } from "../ui/refresh-icon";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SidebarInset } from "../ui/sidebar";
 import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
@@ -40,6 +41,8 @@ import { toastManager } from "../ui/toast";
 import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "../WorkspaceBreadcrumb";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { BoardPriorityIcon, BoardStateIcon } from "./BoardGlyphs";
+import { pickBoardProject } from "./startIssueWork";
+import { useStartIssueWork } from "./useStartIssueWork";
 import {
   applyPendingMoves,
   BOARD_COLUMNS,
@@ -50,6 +53,8 @@ import {
   threadForIssue,
   type PendingMove,
 } from "./boardColumns";
+
+const BOARD_PROJECT_STORAGE_KEY = "t3code:board-project-id";
 
 const weekRangeFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
@@ -70,6 +75,46 @@ export function BoardPage() {
   const [pendingMoves, setPendingMoves] = useState<ReadonlyMap<string, PendingMove>>(new Map());
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const projects = useProjects();
+  const [preferredProjectId, setPreferredProjectId] = useState(() =>
+    localStorage.getItem(BOARD_PROJECT_STORAGE_KEY),
+  );
+  const project = pickBoardProject(projects, preferredProjectId);
+  const startIssueWork = useStartIssueWork();
+  const [startingIds, setStartingIds] = useState<ReadonlySet<string>>(new Set());
+
+  const selectProject = (projectId: string) => {
+    localStorage.setItem(BOARD_PROJECT_STORAGE_KEY, projectId);
+    setPreferredProjectId(projectId);
+  };
+
+  const startWork = useCallback(
+    async (issue: LinearIssue) => {
+      if (project === null) {
+        toastManager.add({
+          type: "error",
+          title: `Couldn't start ${issue.identifier}`,
+          description: "Pick the project issue worktrees start in, at the top of the board.",
+        });
+        return;
+      }
+      setStartingIds((ids) => new Set(ids).add(issue.id));
+      const error = await startIssueWork(issue, project);
+      setStartingIds((ids) => {
+        const next = new Set(ids);
+        next.delete(issue.id);
+        return next;
+      });
+      if (error !== null) {
+        toastManager.add({
+          type: "error",
+          title: `Couldn't start ${issue.identifier}`,
+          description: error,
+        });
+      }
+    },
+    [project, startIssueWork],
+  );
 
   const fetchedIssues = board.data?.issues;
   // Superseded moves are ignored rather than deleted: a later drag of the same card replaces them.
@@ -92,6 +137,11 @@ export function BoardPage() {
     const column = BOARD_COLUMNS.find((candidate) => candidate.key === event.over?.id);
     if (environmentId === null || issue === undefined || column === undefined) return;
     if (boardColumnKeyForIssue(issue) === column.key) return;
+
+    // Entering In Progress opens the issue's worktree thread, unless it already has one.
+    if (column.key === "in-progress" && threadForIssue(issue, threads) === null) {
+      void startWork(issue);
+    }
 
     const original = fetchedIssues?.find((candidate) => candidate.id === issue.id);
     const stateName = targetStateName(column);
@@ -133,6 +183,28 @@ export function BoardPage() {
             </WorkspaceBreadcrumbItem>
           </WorkspaceBreadcrumb>
           <div className="min-w-0 flex-1" />
+          {projects.length > 1 ? (
+            <Select
+              value={project?.id ?? ""}
+              onValueChange={(value) => selectProject(String(value))}
+            >
+              <SelectTrigger
+                aria-label="Project for new issue worktrees"
+                size="compact"
+                variant="ghost"
+                className="w-auto min-w-0"
+              >
+                <SelectValue>{project?.title ?? "Choose project"}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                {projects.map((candidate) => (
+                  <SelectItem key={candidate.id} value={candidate.id}>
+                    {candidate.title}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          ) : null}
           <Button
             onClick={board.refresh}
             aria-label="Refresh board"
@@ -174,7 +246,12 @@ export function BoardPage() {
                         key={issue.id}
                         issue={issue}
                         thread={threadForIssue(issue, threads)}
-                        syncing={liveMoves.has(issue.id)}
+                        syncing={liveMoves.has(issue.id) || startingIds.has(issue.id)}
+                        onStart={
+                          column.key === "in-progress" && !startingIds.has(issue.id)
+                            ? () => void startWork(issue)
+                            : null
+                        }
                       />
                     ))}
                   </BoardColumnView>
@@ -186,6 +263,7 @@ export function BoardPage() {
                     issue={draggingIssue}
                     thread={threadForIssue(draggingIssue, threads)}
                     syncing={false}
+                    onStart={null}
                     lifted
                   />
                 ) : null}
@@ -244,6 +322,7 @@ function DraggableCard(props: {
   issue: LinearIssue;
   thread: EnvironmentThreadShell | null;
   syncing: boolean;
+  onStart: (() => void) | null;
 }) {
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id: props.issue.id });
   return (
@@ -262,11 +341,14 @@ function BoardCard({
   issue,
   thread,
   syncing,
+  onStart,
   lifted,
 }: {
   issue: LinearIssue;
   thread: EnvironmentThreadShell | null;
   syncing: boolean;
+  /** Starts the issue's worktree thread; offered on In Progress cards that have none yet. */
+  onStart: (() => void) | null;
   lifted: boolean;
 }) {
   const status = thread === null ? null : resolveThreadStatusPill({ thread });
@@ -309,6 +391,16 @@ function BoardCard({
             )}
             <span className="truncate">{status?.label ?? "Thread"}</span>
           </Link>
+        ) : onStart !== null && !syncing ? (
+          <button
+            type="button"
+            onClick={onStart}
+            onPointerDown={(event) => event.stopPropagation()}
+            className="flex h-5 items-center gap-1 rounded border border-dashed border-border px-1.5 text-xs text-muted-foreground hover:border-solid hover:text-foreground"
+          >
+            <PlayIcon className="size-3" />
+            Start work
+          </button>
         ) : null}
       </div>
     </article>

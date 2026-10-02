@@ -22,3 +22,15 @@ export const setLinearIssueState = createEnvironmentRpcCommand(connectionAtomRun
   onSettled: ({ environmentId }, registry) =>
     Effect.sync(() => registry.refresh(linearBoard({ environmentId, input: {} }))),
 });
+
+/** The issue body, read once when work on it starts. */
+export const loadLinearIssueDetail = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:linear:issue-detail",
+  tag: WS_METHODS.linearIssueDetail,
+});
+
+/** One-shot ref listing, to find the branch an issue worktree starts from. */
+export const listBoardProjectRefs = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:linear:list-project-refs",
+  tag: WS_METHODS.vcsListRefs,
+});

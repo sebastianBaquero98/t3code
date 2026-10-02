@@ -17,7 +17,7 @@ import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { loadLinearBoard, setLinearIssueState } from "./linear/Linear.ts";
+import { loadLinearBoard, loadLinearIssueDetail, setLinearIssueState } from "./linear/Linear.ts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
 import { subscribeCodexAuthCallback } from "./provider/CodexAuthCallback.ts";
 import {
@@ -3045,6 +3045,14 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.linearSetIssueState,
             setLinearIssueState(process.env.LINEAR_API_KEY, input).pipe(
+              Effect.provideService(HttpClient.HttpClient, httpClient),
+            ),
+            { "rpc.aggregate": "linear" },
+          ),
+        [WS_METHODS.linearIssueDetail]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.linearIssueDetail,
+            loadLinearIssueDetail(process.env.LINEAR_API_KEY, input).pipe(
               Effect.provideService(HttpClient.HttpClient, httpClient),
             ),
             { "rpc.aggregate": "linear" },

@@ -44,6 +44,15 @@ export const LinearSetIssueStateInput = Schema.Struct({
 });
 export type LinearSetIssueStateInput = typeof LinearSetIssueStateInput.Type;
 
+export const LinearIssueDetailInput = Schema.Struct({ issueId: Schema.String });
+export type LinearIssueDetailInput = typeof LinearIssueDetailInput.Type;
+
+export const LinearIssueDetail = Schema.Struct({
+  /** Markdown body; read on demand because the board never needs it. */
+  description: Schema.NullOr(Schema.String),
+});
+export type LinearIssueDetail = typeof LinearIssueDetail.Type;
+
 export const LinearUnavailableReason = Schema.Literals([
   "missing_api_key",
   "request_failed",

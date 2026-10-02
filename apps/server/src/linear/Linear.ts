@@ -39,6 +39,12 @@ const BOARD_QUERY = `
   }
 `;
 
+const ISSUE_DETAIL_QUERY = `
+  query IssueDetail($id: String!) {
+    issue(id: $id) { description }
+  }
+`;
+
 const ISSUE_TEAM_STATES_QUERY = `
   query IssueTeamStates($id: String!) {
     issue(id: $id) {
@@ -84,6 +90,10 @@ const IssueTeamStatesData = Schema.Struct({
       }),
     }),
   }),
+});
+
+const IssueDetailData = Schema.Struct({
+  issue: Schema.Struct({ description: Schema.NullOr(Schema.String) }),
 });
 
 const MoveIssueData = Schema.Struct({
@@ -194,4 +204,17 @@ export const setLinearIssueState = Effect.fn("setLinearIssueState")(function* (
     MoveIssueData,
   );
   if (!issueUpdate.success) return yield* requestFailed("Linear rejected the state change");
+});
+
+export const loadLinearIssueDetail = Effect.fn("loadLinearIssueDetail")(function* (
+  apiKey: string | undefined,
+  input: { readonly issueId: string },
+) {
+  const { issue } = yield* linearGraphql(
+    apiKey,
+    ISSUE_DETAIL_QUERY,
+    { id: input.issueId },
+    IssueDetailData,
+  );
+  return { description: issue.description };
 });
