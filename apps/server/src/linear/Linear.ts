@@ -32,6 +32,11 @@ const BOARD_QUERY = `
           priority
           branchName
           updatedAt
+          dueDate
+          slaBreachesAt
+          slaHighRiskAt
+          cycle { number }
+          project { name color }
           state { id name type }
         }
       }
@@ -71,6 +76,11 @@ const BoardData = Schema.Struct({
           priority: Schema.Number,
           branchName: Schema.String,
           updatedAt: Schema.String,
+          dueDate: Schema.NullOr(Schema.String),
+          slaBreachesAt: Schema.NullOr(Schema.String),
+          slaHighRiskAt: Schema.NullOr(Schema.String),
+          cycle: Schema.NullOr(Schema.Struct({ number: Schema.Number })),
+          project: Schema.NullOr(Schema.Struct({ name: Schema.String, color: Schema.String })),
           state: Schema.Struct({
             id: Schema.String,
             name: Schema.String,
@@ -175,6 +185,11 @@ export const loadLinearBoard = Effect.fn("loadLinearBoard")(function* (
       stateId: node.state.id,
       stateName: node.state.name,
       stateType: node.state.type,
+      dueDate: node.dueDate,
+      slaBreachesAt: node.slaBreachesAt,
+      slaHighRiskAt: node.slaHighRiskAt,
+      cycleNumber: node.cycle?.number ?? null,
+      project: node.project,
     })),
   };
 });

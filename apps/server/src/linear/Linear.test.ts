@@ -48,6 +48,11 @@ describe("loadLinearBoard", () => {
                     priority: 2,
                     branchName: "sebastian/bra-12-kanban",
                     updatedAt: "2026-09-30T10:00:00.000Z",
+                    dueDate: "2026-10-02",
+                    slaBreachesAt: null,
+                    slaHighRiskAt: null,
+                    cycle: { number: 35 },
+                    project: { name: "Condos V2", color: "#95a2b3" },
                     state: { id: "state-1", name: "In Review", type: "started" },
                   },
                 ],
@@ -77,6 +82,11 @@ describe("loadLinearBoard", () => {
         stateId: "state-1",
         stateName: "In Review",
         stateType: "started",
+        dueDate: "2026-10-02",
+        slaBreachesAt: null,
+        slaHighRiskAt: null,
+        cycleNumber: 35,
+        project: { name: "Condos V2", color: "#95a2b3" },
       });
     }),
   );

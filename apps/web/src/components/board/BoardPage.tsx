@@ -222,7 +222,7 @@ export function BoardPage() {
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-board-canvas text-board-text">
         <WorkspacePageHeader electron={isElectron}>
           <WorkspaceBreadcrumb ariaLabel="Board breadcrumb">
             <WorkspaceBreadcrumbItem current className="gap-2">
@@ -284,7 +284,7 @@ export function BoardPage() {
               onDragCancel={() => setDraggingId(null)}
               onDragEnd={handleDragEnd}
             >
-              <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto px-3 pt-3 pb-3">
+              <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pt-2 pb-4">
                 {columns.map(({ column, issues: columnIssues }) => (
                   <BoardColumnView
                     key={column.key}
@@ -353,16 +353,16 @@ function BoardColumnView({
       ref={setNodeRef}
       aria-label={title}
       className={cn(
-        "flex w-[17.5rem] shrink-0 flex-col rounded-lg bg-muted/40 transition-colors",
-        isOver && "bg-accent/70 ring-1 ring-border",
+        "flex w-80 shrink-0 flex-col rounded-lg bg-board-column transition-colors",
+        isOver && "ring-1 ring-board-state-done/60",
       )}
     >
-      <header className="flex h-9 shrink-0 items-center gap-2 px-3 text-sm">
+      <header className="flex h-11 shrink-0 items-center gap-2 px-3.5 text-sm text-board-heading">
         <BoardStateIcon columnKey={columnKey} />
         <span className="font-medium">{title}</span>
-        <span className="text-muted-foreground">{count}</span>
+        <span className="text-board-text-muted">{count}</span>
       </header>
-      <ol className="flex min-h-16 flex-1 flex-col gap-1.5 overflow-y-auto px-1.5 pb-1.5">
+      <ol className="flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
         {loading ? (
           <>
             <Skeleton className="h-18" />

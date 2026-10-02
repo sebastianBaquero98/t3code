@@ -248,6 +248,24 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-foreground: var(--contrast-foreground);
   --color-background: var(--background);
   --color-surface-raised: var(--surface-raised);
+  --color-board-canvas: var(--board-canvas);
+  --color-board-column: var(--board-column);
+  --color-board-card: var(--board-card);
+  --color-board-card-border: var(--board-card-border);
+  --color-board-chip-border: var(--board-chip-border);
+  --color-board-text: var(--board-text);
+  --color-board-text-muted: var(--board-text-muted);
+  --color-board-heading: var(--board-heading);
+  --color-board-state-todo: var(--board-state-todo);
+  --color-board-state-progress: var(--board-state-progress);
+  --color-board-state-blocked: var(--board-state-blocked);
+  --color-board-state-review: var(--board-state-review);
+  --color-board-state-ready: var(--board-state-ready);
+  --color-board-state-testing: var(--board-state-testing);
+  --color-board-state-done: var(--board-state-done);
+  --color-board-urgent: var(--board-urgent);
+  --color-board-overdue: var(--board-overdue);
+  --color-board-accent: var(--board-accent);
   --color-message: var(--message-surface);
   --color-message-foreground: var(--contrast-message-foreground);
   --color-message-action: var(--message-action);
@@ -1255,6 +1273,63 @@ html[data-theme-id]:not([data-theme-id=""]) {
   --terminal-foreground: var(--app-theme-terminal-foreground);
   --terminal-cursor: var(--app-theme-terminal-cursor);
   --terminal-selection-background: var(--app-theme-terminal-selection-background);
+}
+
+/* Board surfaces and Linear workflow colors. The default theme uses Linear's
+   own palette, measured from Linear and read from the team's workflow states;
+   a selected app theme derives the same roles from its palette below. */
+:root {
+  --board-canvas: #f9f9fa;
+  --board-column: #f5f5f6;
+  --board-card: #ffffff;
+  --board-card-border: #ebebec;
+  --board-chip-border: #e0e0e2;
+  --board-text: #1b1b1b;
+  --board-text-muted: #5e5e60;
+  --board-heading: #2f2f31;
+  --board-state-todo: #a6a6a6;
+  --board-state-progress: #f2c94c;
+  --board-state-blocked: #eb5757;
+  --board-state-review: #4cb782;
+  --board-state-ready: #f2994a;
+  --board-state-testing: #26b5ce;
+  --board-state-done: #5e6ad2;
+  --board-urgent: #fc7840;
+  --board-overdue: #eb5757;
+  --board-accent: #5e6ad2;
+
+  @variant dark {
+    --board-canvas: #0f0f0f;
+    --board-column: #121213;
+    --board-card: #1a1a1b;
+    --board-card-border: #232325;
+    --board-chip-border: #303133;
+    --board-text: #ffffff;
+    --board-text-muted: #99999c;
+    --board-heading: #e3e4e6;
+    --board-state-todo: #e2e2e2;
+  }
+}
+
+html[data-theme-id]:not([data-theme-id=""]) {
+  --board-canvas: var(--background);
+  --board-column: color-mix(in srgb, var(--foreground) 3%, var(--background));
+  --board-card: var(--card);
+  --board-card-border: var(--border);
+  --board-chip-border: var(--border);
+  --board-text: var(--foreground);
+  --board-text-muted: var(--muted-foreground);
+  --board-heading: var(--foreground);
+  --board-state-todo: var(--muted-foreground);
+  --board-state-progress: var(--warning);
+  --board-state-blocked: var(--destructive);
+  --board-state-review: var(--success);
+  --board-state-ready: var(--update);
+  --board-state-testing: var(--info);
+  --board-state-done: var(--primary);
+  --board-urgent: var(--warning);
+  --board-overdue: var(--destructive);
+  --board-accent: var(--primary);
 }
 
 /* Theme-token dependency probes are restored synchronously, before paint. Keep

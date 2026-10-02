@@ -10,13 +10,13 @@ interface StateGlyph {
 // Linear's shapes, the active theme's colors: a hollow ring to start, a pie that fills as work
 // advances, a solid check when it ships. Blocked breaks the sequence with a bar.
 const STATE_GLYPHS: Record<string, StateGlyph> = {
-  todo: { progress: 0, tone: "text-muted-foreground" },
-  "in-progress": { progress: 0.5, tone: "text-warning" },
-  blocked: { progress: 0, tone: "text-destructive", variant: "blocked" },
-  "in-review": { progress: 0.75, tone: "text-success" },
-  "ready-to-test": { progress: 0.75, tone: "text-info" },
-  testing: { progress: 0.9, tone: "text-update" },
-  done: { progress: 1, tone: "text-primary", variant: "done" },
+  todo: { progress: 0, tone: "text-board-state-todo" },
+  "in-progress": { progress: 0.5, tone: "text-board-state-progress" },
+  blocked: { progress: 0, tone: "text-board-state-blocked", variant: "blocked" },
+  "in-review": { progress: 0.75, tone: "text-board-state-review" },
+  "ready-to-test": { progress: 0.75, tone: "text-board-state-ready" },
+  testing: { progress: 0.9, tone: "text-board-state-testing" },
+  done: { progress: 1, tone: "text-board-state-done", variant: "done" },
 };
 
 function piePath(progress: number): string {
@@ -47,7 +47,7 @@ export function BoardStateIcon({
           <path
             d="M4.5 7.2 L6.2 8.8 L9.5 5.4"
             fill="none"
-            stroke="var(--color-background)"
+            stroke="var(--board-card)"
             strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -81,14 +81,9 @@ export function BoardPriorityIcon({ priority }: { priority: number }) {
     return (
       <svg viewBox="0 0 14 14" role="img" aria-label={label} className="size-3.5 shrink-0">
         <title>{label}</title>
-        <rect x="1" y="1" width="12" height="12" rx="3" className="fill-warning" />
-        <path
-          d="M7 4 V7.6"
-          stroke="var(--color-background)"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-        <circle cx="7" cy="10" r="0.9" fill="var(--color-background)" />
+        <rect x="1" y="1" width="12" height="12" rx="3" className="fill-board-urgent" />
+        <path d="M7 4 V7.6" stroke="var(--board-card)" strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx="7" cy="10" r="0.9" fill="var(--board-card)" />
       </svg>
     );
   }
@@ -104,7 +99,7 @@ export function BoardPriorityIcon({ priority }: { priority: number }) {
             width="2.5"
             height="1.5"
             rx="0.5"
-            className="fill-muted-foreground/60"
+            className="fill-board-text-muted/60"
           />
         ))}
       </svg>
@@ -123,7 +118,7 @@ export function BoardPriorityIcon({ priority }: { priority: number }) {
           width="3"
           height={3 + bar * 3}
           rx="0.75"
-          className={bar < lit ? "fill-foreground/70" : "fill-muted-foreground/25"}
+          className={bar < lit ? "fill-board-text-muted" : "fill-board-text-muted/30"}
         />
       ))}
     </svg>

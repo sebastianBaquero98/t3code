@@ -5,9 +5,14 @@ import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullR
 import { Link } from "@tanstack/react-router";
 import {
   ArrowUpRightIcon,
+  BoxIcon,
+  CalendarIcon,
+  CalendarX2Icon,
   CornerDownRightIcon,
+  FlameIcon,
   GitBranchIcon,
   PlayIcon,
+  RefreshCcwDotIcon,
   ScanSearchIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -22,8 +27,9 @@ import { ThreadStatusLabel } from "../ThreadStatusIndicators";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { BoardPriorityIcon } from "./BoardGlyphs";
+import { BoardPriorityIcon, BoardStateIcon, PRIORITY_LABEL } from "./BoardGlyphs";
 import { parseTaskChecklist } from "./boardActions";
+import { dueDateTone, formatDueDate, slaStatus, type MetaTone } from "./cardMeta";
 
 export interface BoardCardActions {
   /** Opens the issue's worktree thread; offered on In Progress cards without one. */
@@ -35,6 +41,12 @@ export interface BoardCardActions {
 }
 
 const NO_ACTIONS: BoardCardActions = { onStart: null, onShip: null, onReview: null };
+
+const TONE_CLASS: Record<MetaTone, string> = {
+  muted: "text-board-text-muted",
+  warning: "text-board-urgent",
+  danger: "text-board-overdue",
+};
 
 export function BoardCard({
   issue,
@@ -55,6 +67,7 @@ export function BoardCard({
   lifted?: boolean;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const now = new Date();
   const status = thread === null ? null : resolveThreadStatusPill({ thread });
   const working = thread !== null && resolveSidebarThreadStatus(thread) === "working";
   const pullRequest =
@@ -62,16 +75,28 @@ export function BoardCard({
   const pullRequestLook = PULL_REQUEST_STATE_PRESENTATION[pullRequest?.snapshot?.state ?? "open"];
   // The dashed edge says "the board asked for this and the agent is still on it".
   const inFlight = busy || (columnKey === "in-review" && working);
+  const completed = columnKey === "done";
+  const dueTone = issue.dueDate === null ? null : dueDateTone(issue.dueDate, now, completed);
+  const sla =
+    issue.slaBreachesAt === null || completed
+      ? null
+      : slaStatus(issue.slaBreachesAt, issue.slaHighRiskAt, now);
 
   const card = (
     <article
       className={cn(
-        "group/card flex cursor-grab flex-col gap-1.5 rounded-md border border-border/70 bg-card px-3 py-2.5 text-sm shadow-xs transition-[border-color,box-shadow] hover:border-border",
-        inFlight && "border-dashed border-muted-foreground/60",
-        lifted && "cursor-grabbing border-border shadow-lg",
+        "group/card flex cursor-grab flex-col gap-2 rounded-lg border border-board-card-border bg-board-card px-3.5 pt-3 pb-3.5 text-board-text shadow-xs transition-[border-color,box-shadow] hover:shadow-sm",
+        inFlight && "border-dashed border-board-text-muted/50",
+        lifted && "cursor-grabbing shadow-lg",
       )}
     >
-      <div className="flex h-4 items-center gap-1.5 text-xs text-muted-foreground">
+      <div className="flex h-4 items-center gap-1.5 text-xs text-board-text-muted">
+        <Tooltip>
+          <TooltipTrigger render={<span className="inline-flex" />}>
+            <BoardPriorityIcon priority={issue.priority} />
+          </TooltipTrigger>
+          <TooltipPopup side="top">{PRIORITY_LABEL[issue.priority] ?? "No priority"}</TooltipPopup>
+        </Tooltip>
         <span className="tabular-nums">{issue.identifier}</span>
         {busy ? <Spinner size="sm" className="size-3" /> : null}
         <div className="flex-1" />
@@ -87,24 +112,59 @@ export function BoardCard({
             rel="noreferrer"
             aria-label={`Open ${issue.identifier} in Linear`}
             onPointerDown={(event) => event.stopPropagation()}
-            className="hover:text-foreground"
+            className="hover:text-board-text"
           >
             <ArrowUpRightIcon className="size-3.5" />
           </a>
         </div>
       </div>
-      <p className="line-clamp-2 leading-snug font-medium">{issue.title}</p>
-      <div className="mt-0.5 flex h-5 min-w-0 items-center gap-1.5">
-        <BoardPriorityIcon priority={issue.priority} />
-        {thread !== null ? (
-          <ThreadChip thread={thread}>
-            {status !== null ? (
-              <ThreadStatusLabel status={status} compact />
+
+      <div className="flex items-start gap-2">
+        <BoardStateIcon columnKey={columnKey} className="mt-0.5" />
+        <p className="line-clamp-2 text-sm leading-snug font-medium">{issue.title}</p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {issue.dueDate !== null && dueTone !== null ? (
+          <Chip>
+            {dueTone === "danger" ? (
+              <CalendarX2Icon className={cn("size-3.5", TONE_CLASS.danger)} />
             ) : (
-              <GitBranchIcon className="size-3" />
+              <CalendarIcon className={cn("size-3.5", TONE_CLASS[dueTone])} />
             )}
-            <span className="truncate">{status?.label ?? "Thread"}</span>
-          </ThreadChip>
+            {formatDueDate(issue.dueDate)}
+          </Chip>
+        ) : null}
+        {sla !== null ? (
+          <Chip>
+            <FlameIcon className={cn("size-3.5", TONE_CLASS[sla.tone])} />
+            <span className={cn(sla.tone !== "muted" && TONE_CLASS[sla.tone])}>{sla.label}</span>
+          </Chip>
+        ) : null}
+        {issue.cycleNumber !== null ? (
+          <Chip>
+            <RefreshCcwDotIcon className="size-3.5 text-board-accent" />
+            <span className="tabular-nums">{issue.cycleNumber}</span>
+          </Chip>
+        ) : null}
+        {issue.project !== null ? (
+          <Chip>
+            {/* Linear's own project color, the way Linear marks the project everywhere. */}
+            <BoxIcon className="size-3.5" style={{ color: issue.project.color }} />
+            <span className="max-w-32 truncate">{issue.project.name}</span>
+          </Chip>
+        ) : null}
+        {thread !== null ? (
+          <ThreadLink thread={thread}>
+            <Chip interactive>
+              {status !== null ? (
+                <ThreadStatusLabel status={status} compact />
+              ) : (
+                <GitBranchIcon className="size-3.5" />
+              )}
+              <span className="max-w-28 truncate">{status?.label ?? "Thread"}</span>
+            </Chip>
+          </ThreadLink>
         ) : null}
         {pullRequest !== null ? (
           <a
@@ -112,38 +172,42 @@ export function BoardCard({
             target="_blank"
             rel="noreferrer"
             onPointerDown={(event) => event.stopPropagation()}
-            className="flex h-5 shrink-0 items-center gap-1 rounded border border-border/70 px-1.5 text-xs text-muted-foreground hover:border-border hover:text-foreground"
           >
-            <pullRequestLook.Icon className={cn("size-3", pullRequestLook.toneClassName)} />
-            <span className="tabular-nums">#{pullRequest.number}</span>
+            <Chip interactive>
+              <pullRequestLook.Icon className={cn("size-3.5", pullRequestLook.toneClassName)} />
+              <span className="tabular-nums">#{pullRequest.number}</span>
+            </Chip>
           </a>
         ) : null}
         {actions.onStart !== null ? (
-          <CardTextButton onClick={actions.onStart} icon={<PlayIcon className="size-3" />}>
+          <ActionChip onClick={actions.onStart} icon={<PlayIcon className="size-3" />}>
             Start work
-          </CardTextButton>
+          </ActionChip>
         ) : actions.onShip !== null && pullRequest === null ? (
-          <CardTextButton
+          <ActionChip
             onClick={actions.onShip}
             icon={<PullRequestGlyph.pullRequest className="size-3" />}
           >
             Open PR
-          </CardTextButton>
+          </ActionChip>
         ) : null}
       </div>
+
       {reviews.length > 0 ? (
-        <ul className="flex flex-col gap-1 border-t border-border/60 pt-1.5">
+        <ul className="flex flex-col gap-1 border-t border-board-card-border pt-2">
           {reviews.map((review) => {
             const reviewStatus = resolveThreadStatusPill({ thread: review });
             return (
               <li key={review.id}>
-                <ThreadChip thread={review} bare>
-                  <CornerDownRightIcon className="size-3 shrink-0" />
-                  <span className="truncate">{review.title}</span>
-                  {reviewStatus !== null ? (
-                    <ThreadStatusLabel status={reviewStatus} compact />
-                  ) : null}
-                </ThreadChip>
+                <ThreadLink thread={review}>
+                  <span className="flex min-w-0 items-center gap-1.5 text-xs text-board-text-muted hover:text-board-text">
+                    <CornerDownRightIcon className="size-3 shrink-0" />
+                    <span className="truncate">{review.title}</span>
+                    {reviewStatus !== null ? (
+                      <ThreadStatusLabel status={reviewStatus} compact />
+                    ) : null}
+                  </span>
+                </ThreadLink>
               </li>
             );
           })}
@@ -202,7 +266,7 @@ function TaskProgress({
           <div className="flex items-center gap-2">
             <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-primary"
+                className="h-full rounded-full bg-board-accent"
                 style={{ width: `${(checklist.done / checklist.total) * 100}%` }}
               />
             </div>
@@ -222,7 +286,7 @@ function TaskProgress({
               </ul>
             </div>
           ) : (
-            <p className="text-success">Checklist complete.</p>
+            <p className="text-board-state-review">Checklist complete.</p>
           )}
         </>
       )}
@@ -230,31 +294,34 @@ function TaskProgress({
   );
 }
 
-function ThreadChip({
-  thread,
-  bare = false,
-  children,
-}: {
-  thread: EnvironmentThreadShell;
-  bare?: boolean;
-  children: ReactNode;
-}) {
+/** Linear's metadata pill: hairline border, muted text, icon first. */
+function Chip({ interactive = false, children }: { interactive?: boolean; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 min-w-0 items-center gap-1 rounded-full border border-board-chip-border px-2 text-xs text-board-text-muted",
+        interactive && "hover:text-board-text",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function ThreadLink({ thread, children }: { thread: EnvironmentThreadShell; children: ReactNode }) {
   return (
     <Link
       to="/$environmentId/$threadId"
       params={buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id))}
       onPointerDown={(event) => event.stopPropagation()}
-      className={cn(
-        "flex min-w-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground",
-        !bare && "h-5 rounded border border-border/70 px-1.5 hover:border-border",
-      )}
+      className="min-w-0"
     >
       {children}
     </Link>
   );
 }
 
-function CardTextButton({
+function ActionChip({
   onClick,
   icon,
   children,
@@ -268,7 +335,7 @@ function CardTextButton({
       type="button"
       onClick={onClick}
       onPointerDown={(event) => event.stopPropagation()}
-      className="flex h-5 shrink-0 items-center gap-1 rounded border border-dashed border-border px-1.5 text-xs text-muted-foreground hover:border-solid hover:text-foreground"
+      className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-dashed border-board-chip-border px-2 text-xs text-board-text-muted hover:border-solid hover:text-board-text"
     >
       {icon}
       {children}
@@ -294,7 +361,7 @@ function CardIconButton({
             aria-label={label}
             onClick={onClick}
             onPointerDown={(event) => event.stopPropagation()}
-            className="hover:text-foreground"
+            className="hover:text-board-text"
           />
         }
       >

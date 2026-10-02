@@ -21,6 +21,11 @@ const issue = (overrides: Partial<LinearIssue>): LinearIssue => ({
   stateName: "To do",
   stateType: "unstarted",
   updatedAt: "2026-09-29T00:00:00.000Z",
+  dueDate: null,
+  slaBreachesAt: null,
+  slaHighRiskAt: null,
+  cycleNumber: null,
+  project: null,
   ...overrides,
 });
 

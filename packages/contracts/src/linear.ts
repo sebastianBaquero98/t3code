@@ -24,6 +24,13 @@ export const LinearIssue = Schema.Struct({
   stateName: Schema.String,
   stateType: LinearStateType,
   updatedAt: Schema.String,
+  /** Calendar date (YYYY-MM-DD) the issue is due, without a time of day. */
+  dueDate: Schema.NullOr(Schema.String),
+  /** When the issue's SLA breaches, and when it turns high risk. */
+  slaBreachesAt: Schema.NullOr(Schema.String),
+  slaHighRiskAt: Schema.NullOr(Schema.String),
+  cycleNumber: Schema.NullOr(Schema.Number),
+  project: Schema.NullOr(Schema.Struct({ name: Schema.String, color: Schema.String })),
 });
 export type LinearIssue = typeof LinearIssue.Type;
 
