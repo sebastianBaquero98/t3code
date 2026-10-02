@@ -22,7 +22,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
 import { usePrimaryEnvironmentId } from "../../state/environments";
-import { useProjects, useThreadShells } from "../../state/entities";
+import {
+  useAllEnvironmentShellsBootstrapped,
+  useProjects,
+  useThreadShells,
+} from "../../state/entities";
 import { linearBoard, setLinearIssueState } from "../../state/linear";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -38,7 +42,12 @@ import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "../WorkspaceBreadc
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { BoardCard, type BoardCardActions } from "./BoardCard";
 import { BoardStateIcon } from "./BoardGlyphs";
-import { buildShipPrompt, issueThreads, shouldMarkReadyToTest } from "./boardActions";
+import {
+  buildShipPrompt,
+  issueThreads,
+  shouldMarkReadyToTest,
+  shouldStartWork,
+} from "./boardActions";
 import {
   applyPendingMoves,
   BOARD_COLUMNS,
@@ -74,6 +83,7 @@ export function BoardPage() {
     environmentId === null ? null : linearBoard({ environmentId, input: {} }),
   );
   const threads = useThreadShells();
+  const threadsLoaded = useAllEnvironmentShellsBootstrapped();
   const projects = useProjects();
   const moveIssue = useAtomCommand(setLinearIssueState, { reportFailure: false });
   const startIssueWork = useStartIssueWork();
@@ -183,6 +193,14 @@ export function BoardPage() {
     }
   }, [fetchedIssues, moveToState, threadsByIssue]);
 
+  const canStartWork = (issue: LinearIssue, columnKey: string) =>
+    shouldStartWork({
+      columnKey,
+      hasAnyThread: threadsByIssue.get(issue.id)?.hasAnyThread ?? false,
+      starting: busyIds.has(issue.id),
+      threadsLoaded,
+    });
+
   const handleDragEnd = (event: DragEndEvent) => {
     setDraggingId(null);
     const issue = issues.find((candidate) => candidate.id === event.active.id);
@@ -191,7 +209,7 @@ export function BoardPage() {
     if (boardColumnKeyForIssue(issue) === column.key) return;
 
     const thread = threadsByIssue.get(issue.id)?.primary ?? null;
-    if (column.key === "in-progress" && thread === null) void startWork(issue);
+    if (canStartWork(issue, column.key)) void startWork(issue);
     if (column.key === "in-review" && thread !== null) void shipIssue(issue, thread);
 
     const original = fetchedIssues?.find((candidate) => candidate.id === issue.id);
@@ -202,7 +220,7 @@ export function BoardPage() {
     const thread = threadsByIssue.get(issue.id)?.primary ?? null;
     if (busyIds.has(issue.id)) return { onStart: null, onShip: null, onReview: null };
     return {
-      onStart: columnKey === "in-progress" && thread === null ? () => void startWork(issue) : null,
+      onStart: canStartWork(issue, columnKey) ? () => void startWork(issue) : null,
       onShip:
         columnKey === "in-review" &&
         thread !== null &&

@@ -12,7 +12,7 @@ import { useServerConfigs } from "../../state/entities";
 import { listBoardProjectRefs, loadLinearIssueDetail } from "../../state/linear";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { buildHardReviewPrompt } from "./boardActions";
+import { buildHardReviewPrompt, issueThreadTitle } from "./boardActions";
 import { buildStartPrompt, defaultBranchName } from "./startIssueWork";
 
 const failureText = (result: {
@@ -57,7 +57,7 @@ export function useStartIssueWork() {
       const detail = await loadDetail({ environmentId, input: { issueId: issue.id } });
       const description = detail._tag === "Success" ? detail.value.description : null;
 
-      const title = `${issue.identifier} · ${issue.title}`;
+      const title = issueThreadTitle(issue);
       const createdAt = new Date().toISOString();
       const runtimeMode = settings.defaultRuntimeMode;
       const result = await startTurn({

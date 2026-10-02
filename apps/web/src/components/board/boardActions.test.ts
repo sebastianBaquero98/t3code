@@ -6,6 +6,7 @@ import {
   issueThreads,
   parseTaskChecklist,
   shouldMarkReadyToTest,
+  shouldStartWork,
 } from "./boardActions";
 
 const issue = {
@@ -49,12 +50,14 @@ describe("parseTaskChecklist", () => {
 });
 
 describe("issueThreads", () => {
-  const thread = (id: string, branch: string | null, createdAt: string) => ({
+  const thread = (id: string, branch: string | null, createdAt: string, title = "Thread") => ({
     id,
+    title,
     branch,
     createdAt,
     archivedAt: null as string | null,
   });
+  const issue = { identifier: "BRAV-2385", branchName: "feature/brav-2385" };
 
   it("treats the first thread on the branch as the issue's and later ones as reviews", () => {
     const threads = [
@@ -62,12 +65,59 @@ describe("issueThreads", () => {
       thread("work", "feature/brav-2385", "2026-10-01T09:00:00.000Z"),
       thread("elsewhere", "develop", "2026-10-01T08:00:00.000Z"),
       thread("review-1", "feature/brav-2385", "2026-10-01T10:00:00.000Z"),
-      { ...thread("archived", "feature/brav-2385", "2026-10-01T07:00:00.000Z"), archivedAt: "x" },
     ];
-    const { primary, reviews } = issueThreads(issue, threads);
+    const { primary, reviews, hasAnyThread } = issueThreads(issue, threads);
     expect(primary?.id).toBe("work");
     expect(reviews.map((review) => review.id)).toEqual(["review-1", "review-2"]);
-    expect(issueThreads({ branchName: "none" }, threads)).toEqual({ primary: null, reviews: [] });
+    expect(hasAnyThread).toBe(true);
+    expect(issueThreads({ identifier: "BRAV-1", branchName: "none" }, threads)).toEqual({
+      primary: null,
+      reviews: [],
+      hasAnyThread: false,
+    });
+  });
+
+  it("finds the issue's thread by title while its worktree is still on the base branch", () => {
+    const starting = thread("starting", "develop", "2026-10-01T09:00:00.000Z", "BRAV-2385 · Firma");
+    expect(issueThreads(issue, [starting]).primary?.id).toBe("starting");
+  });
+
+  it("hides an archived thread but still reports that the issue has one", () => {
+    const archived = {
+      ...thread("archived", "feature/brav-2385", "2026-10-01T09:00:00.000Z"),
+      archivedAt: "2026-10-01T11:00:00.000Z",
+    };
+    expect(issueThreads(issue, [archived])).toEqual({
+      primary: null,
+      reviews: [],
+      hasAnyThread: true,
+    });
+  });
+});
+
+describe("shouldStartWork", () => {
+  const firstStart = {
+    columnKey: "in-progress",
+    hasAnyThread: false,
+    starting: false,
+    threadsLoaded: true,
+  };
+
+  it("opens a worktree the first time an issue enters In Progress", () => {
+    expect(shouldStartWork(firstStart)).toBe(true);
+  });
+
+  it("never starts again when a card comes back to In Progress with its thread", () => {
+    expect(shouldStartWork({ ...firstStart, hasAnyThread: true })).toBe(false);
+  });
+
+  it("does not start twice while a start is in flight, or before threads have loaded", () => {
+    expect(shouldStartWork({ ...firstStart, starting: true })).toBe(false);
+    expect(shouldStartWork({ ...firstStart, threadsLoaded: false })).toBe(false);
+  });
+
+  it("only starts from In Progress", () => {
+    expect(shouldStartWork({ ...firstStart, columnKey: "blocked" })).toBe(false);
   });
 });
 
