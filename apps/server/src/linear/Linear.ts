@@ -19,7 +19,8 @@ const BOARD_QUERY = `
         filter: {
           or: [
             { state: { type: { in: ["unstarted", "started"] } } }
-            { state: { type: { eq: "completed" } }, completedAt: { gte: $weekStart } }
+            # Linear does not AND sibling fields inside an "or" branch; the explicit "and" does.
+            { and: [{ state: { type: { eq: "completed" } } }, { completedAt: { gte: $weekStart } }] }
           ]
         }
       ) {
